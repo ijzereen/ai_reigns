@@ -1,0 +1,3 @@
+# Python dependencies for FastAPI backend
+fastapi
+uvicorn

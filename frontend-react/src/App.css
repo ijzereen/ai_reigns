@@ -1,0 +1,10 @@
+/* App 컴포넌트 관련 스타일 예시 */
+body {
+  margin: 0;
+  font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', Arial, sans-serif;
+  background: #f3f4f6;
+}
+
+#root {
+  height: 100vh;
+}
