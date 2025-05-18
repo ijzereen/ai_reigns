@@ -1,0 +1,25 @@
+# Python
+*.pyc
+__pycache__/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 환경설정 및 민감정보
+backend/.env
+.env
+.env.*
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# 빌드 산출물
+frontend/build/
+
+# 기타
+*.log
