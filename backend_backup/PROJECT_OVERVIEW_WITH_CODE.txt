@@ -1,0 +1,375 @@
+# SEEDCOOP AI Reigns - 주요 백엔드/프론트엔드 코드 및 설정 요약 (코드 포함)
+
+## 1. 백엔드 (FastAPI)
+
+### 1-1. 앱 진입점 및 설정
+
+#### app/main.py
+```python
+from fastapi import FastAPI
+# from starlette.middleware.cors import CORSMiddleware # CORS 설정 시 필요
+
+from app.presentation.api.v1.api import api_router_v1 # v1 API 라우터 임포트
+# from app.core.config import settings # 프로젝트 설정 로드
+
+app = FastAPI(
+    title="Interactive Story Game API", # 프로젝트 제목
+    openapi_url="/api/v1/openapi.json" # OpenAPI 스키마 경로
+)
+
+# CORS 미들웨어 설정 (프론트엔드와 다른 도메인에서 API 호출 시 필요)
+# if settings.BACKEND_CORS_ORIGINS:
+#     app.add_middleware(
+#         CORSMiddleware,
+#         allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+#         allow_credentials=True,
+#         allow_methods=["*"],
+#         allow_headers=["*"],
+#     )
+
+# /v1 경로로 API 라우터 포함
+app.include_router(api_router_v1, prefix="/api/v1")
+
+@app.get("/") # 루트 경로 핸들러 (선택 사항)
+async def root():
+    return {"message": "인터랙티브 스토리 게임 API에 오신 것을 환영합니다!"}
+```
+
+#### app/core/config.py
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
+from typing import Optional, List
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "Interactive Story Game API"
+    API_V1_STR: str = "/api/v1"
+
+    # .env 파일에서 직접 DATABASE_URL을 읽어오도록 설정
+    DATABASE_URL: str # 예: "postgresql://won:mypassword123@localhost:5432/app_db"
+
+    # JWT 토큰 설정
+    SECRET_KEY: str = "a_very_secret_key_for_jwt_please_change_this" # 실제 운영 시 반드시 변경
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 예: 7일
+
+    # LLM API 키
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+
+    # CORS 설정 (필요시)
+    # BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"] # 프론트엔드 주소 예시
+
+    model_config = SettingsConfigDict(
+        env_file=".env", # .env 파일 사용 명시
+        env_file_encoding='utf-8',
+        case_sensitive=False, # .env 파일의 변수 이름 대소문자 구분 안 함
+        extra='ignore' # Settings 모델에 정의되지 않은 .env 변수는 무시
+    )
+
+    @property
+    def SYNC_DATABASE_URL(self) -> str:
+        # DATABASE_URL 필드를 직접 반환 (Alembic 및 동기 DB 연결에 사용)
+        if not self.DATABASE_URL:
+            raise ValueError("DATABASE_URL is not set in the environment variables.")
+        return self.DATABASE_URL
+
+    @property
+    def ASYNC_DATABASE_URL(self) -> Optional[str]:
+        # 비동기 드라이버 사용 시 (현재는 미사용)
+        # if self.DATABASE_URL:
+        #     return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+        return None
+
+@lru_cache() # 설정 객체는 한 번만 로드하도록 캐싱
+def get_settings() -> Settings:
+    return Settings()
+
+settings = get_settings()
+```
+
+#### app/core/deps.py
+```python
+from typing import Generator, Optional
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+from jose import JWTError, jwt
+from pydantic import ValidationError # Pydantic V2에서는 pydantic_core.ValidationError 일 수 있음
+
+from app.core.config import settings
+from app.domain.models.user import User
+from app.infrastructure.db.session import SessionLocal
+from app.application.services.user_service import user_service # user_service 임포트
+from app.schemas.token_schema import TokenData
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/users/login") # 정확한 토큰 URL 명시
+
+def get_db() -> Generator:
+    try:
+        db = SessionLocal()
+        yield db
+    finally:
+        db.close()
+
+async def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="유효한 자격 증명이 없습니다.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        subject: Optional[str] = payload.get("sub")
+        if subject is None:
+            raise credentials_exception
+        token_data = TokenData(sub=subject)
+    except (JWTError, ValidationError):
+        raise credentials_exception
+    
+    user = user_service.get_user_by_email(db, email=token_data.sub) 
+    
+    if user is None:
+        raise credentials_exception
+    return user
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if not current_user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비활성화된 사용자입니다.")
+    return current_user
+```
+
+### 1-2. 도메인 모델 (SQLAlchemy)
+
+#### app/domain/models/user.py
+```python
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy.orm import relationship
+from .base import Base, TimestampedModel
+
+class User(TimestampedModel):
+    __tablename__ = "users"
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(100), unique=True, index=True, nullable=True)
+    hashed_password = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    stories = relationship("Story", back_populates="creator", cascade="all, delete-orphan")
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}', username='{self.username}')>"
+```
+
+### 1-3. CRUD 레이어
+
+#### app/infrastructure/crud/user_crud.py
+```python
+from typing import Optional, List
+from sqlalchemy.orm import Session
+from app.domain.models.user import User
+from app.schemas.user_schema import UserCreate, UserUpdate
+from .base_crud import CRUDBase
+from app.core.security import get_password_hash
+
+class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
+    def get_by_email(self, db: Session, *, email: str) -> Optional[User]:
+        return db.query(User).filter(User.email == email).first()
+    def get_by_username(self, db: Session, *, username: str) -> Optional[User]:
+        return db.query(User).filter(User.username == username).first()
+    def create(self, db: Session, *, obj_in: UserCreate) -> User:
+        create_data = obj_in.model_dump()
+        plain_password = create_data.pop("password")
+        hashed_password = get_password_hash(plain_password)
+        db_obj_data = {
+            "email": create_data.get("email"),
+            "username": create_data.get("username"),
+            "hashed_password": hashed_password
+        }
+        db_user = User(**db_obj_data)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
+user_crud = CRUDUser(User)
+```
+
+### 1-4. 서비스 계층 (비즈니스 로직)
+
+#### app/application/services/user_service.py
+```python
+from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
+from app.domain.models.user import User
+from app.infrastructure.crud.user_crud import create_user as crud_create_user
+from app.infrastructure.crud.user_crud import get_user_by_username
+from app.infrastructure.crud.user_crud import get_user_by_id
+from app.core.security import get_password_hash, verify_password
+
+class UserService:
+    def create_user(self, db: Session, username: str, password: str) -> User:
+        db_user = get_user_by_username(db, username=username)
+        if db_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+        hashed_password = get_password_hash(password)
+        return crud_create_user(db=db, username=username, hashed_password=hashed_password)
+    def get_user_by_id(self, db: Session, user_id: int) -> User:
+        db_user = get_user_by_id(db, user_id)
+        if db_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        return db_user
+    def authenticate_user(self, db: Session, username: str, password: str) -> User | None:
+        user = get_user_by_username(db, username=username)
+        if not user:
+            return None
+        if not verify_password(password, user.hashed_password):
+            return None
+        return user
+```
+
+### 1-5. API 엔드포인트 (프레젠테이션)
+
+#### app/presentation/api/v1/endpoints/users.py
+```python
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.core import deps
+from app.application.services.user_service import user_service
+from app.schemas.user_schema import UserCreate, UserRead
+from app.schemas.token_schema import Token
+from app.core.security import create_access_token
+from app.core.config import settings
+from fastapi.security import OAuth2PasswordRequestForm
+from datetime import timedelta
+
+router = APIRouter()
+
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user_endpoint(
+    db: Session = Depends(deps.get_db),
+    user_in: UserCreate,
+):
+    user = user_service.create_user(db=db, username=user_in.username, password=user_in.password)
+    return user
+
+@router.post("/login", response_model=Token)
+def login_for_access_token(
+    db: Session = Depends(deps.get_db),
+    form_data: OAuth2PasswordRequestForm = Depends()
+):
+    user = user_service.authenticate_user(
+        db, username=form_data.username, password=form_data.password
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="이메일 또는 비밀번호가 정확하지 않습니다.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        subject=user.username, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+```
+
+### 1-6. Pydantic 스키마
+
+#### app/schemas/user_schema.py
+```python
+from pydantic import BaseModel
+
+class UserCreate(BaseModel):
+    email: str
+    username: str
+    password: str
+
+class UserRead(BaseModel):
+    id: int
+    email: str
+    username: str
+    is_active: bool
+```
+
+---
+
+## 2. 프론트엔드 (React)
+
+### 2-1. 진입점 및 환경
+
+#### src/index.js
+```javascript
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App.jsx';
+import reportWebVitals from './reportWebVitals';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+reportWebVitals();
+```
+
+#### src/constants/api.js
+```javascript
+export const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+```
+
+### 2-2. 서비스/유틸
+
+#### src/services/authService.js
+```javascript
+import { API_BASE_URL } from '../constants/api';
+
+export const authService = {
+  login: async (email, password) => {
+    const formData = new URLSearchParams();
+    formData.append('username', email);
+    formData.append('password', password);
+    const response = await fetch(`${API_BASE_URL}/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '로그인 실패');
+    if (data.access_token) {
+      const userResponse = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: { 'Authorization': `Bearer ${data.access_token}` }
+      });
+      if (!userResponse.ok) throw new Error('사용자 정보를 가져오는 데 실패했습니다.');
+      const userData = await userResponse.json();
+      return { access_token: data.access_token, user: userData };
+    } else {
+      throw new Error('로그인 응답에 액세스 토큰이 없습니다.');
+    }
+  },
+  signup: async (email, username, password) => {
+    const response = await fetch(`${API_BASE_URL}/users/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, username }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '회원가입 실패');
+    return data;
+  }
+};
+```
+
+---
+
+이 파일은 전체 폴더 구조와 실제 코드의 주요 위치, 역할, 그리고 연동에 필요한 핵심 코드까지 한눈에 파악할 수 있도록 정리한 인수인계/온보딩용 문서입니다. 각 파일의 상세 구현은 해당 경로에서 확인하세요.
