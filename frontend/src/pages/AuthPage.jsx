@@ -16,8 +16,10 @@ function AuthPage() {
   const location = useLocation();
 
   useEffect(() => {
+    console.log('[AuthPage useEffect] isAuthenticated:', isAuthenticated, 'isAuthLoading:', isAuthLoading);
     if (isAuthenticated && !isAuthLoading) {
       const from = location.state?.from?.pathname || '/';
+      console.log('[AuthPage useEffect] Navigating to:', from);
       navigate(from, { replace: true });
     }
   }, [isAuthenticated, isAuthLoading, navigate, location.state]);

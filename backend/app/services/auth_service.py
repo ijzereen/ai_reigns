@@ -10,13 +10,19 @@ from app.schemas import user as user_schema, token as token_schema # Renamed for
 from app.models import user as user_model
 
 def signup(db: Session, user_create: user_schema.UserCreate) -> user_model.User:
-    db_user = crud_user.get_user_by_email(db, email=user_create.email)
-    if db_user:
+    db_user_by_email = crud_user.get_user_by_email(db, email=user_create.email)
+    if db_user_by_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
-    return crud_user.create_user(db=db, user_create=user_create)
+    db_user_by_username = crud_user.get_user_by_username(db, username=user_create.username)
+    if db_user_by_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered",
+        )
+    return crud_user.create(db=db, obj_in=user_create)
 
 def login(db: Session, email: str, password: str) -> token_schema.Token:
     user = crud_user.authenticate_user(db, email=email, password=password)
@@ -32,4 +38,5 @@ def login(db: Session, email: str, password: str) -> token_schema.Token:
     access_token = security.create_access_token(
         subject=user.email, expires_delta=access_token_expires
     )
-    return token_schema.Token(access_token=access_token, token_type="bearer") 
+    user_out = user_schema.User.from_orm(user)
+    return token_schema.Token(access_token=access_token, token_type="bearer", user=user_out)

@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 
@@ -12,4 +12,12 @@ if "sqlite" in settings.SQLALCHEMY_DATABASE_URL:
         settings.SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
     )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) 
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Dependency to get DB session
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close() 

@@ -4,9 +4,9 @@ from pathlib import Path # For path operations
 from fastapi.middleware.cors import CORSMiddleware # Import CORS middleware
 
 from app.core.config import settings
-from app.db.session import engine #, SessionLocal # Not creating tables directly here for now
+from app.db.session import engine #, SessionLocal # Not creating tables directly here
 from app.db.base import Base # To create tables
-from app.apis.routes import auth, stories, files
+from app.apis.routes import auth, stories, files, game # Added game router
 
 # Create database tables (For development only. Use Alembic for production migrations)
 # def create_db_and_tables():
@@ -15,7 +15,19 @@ from app.apis.routes import auth, stories, files
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json" # Adjust openapi URL if using API_V1_STR prefix for routers
+    version=settings.PROJECT_VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json", 
+    # docs_url="/docs", # 기본값 사용
+    # redoc_url="/redoc", # 기본값 사용
+    swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect", 
+    swagger_ui_init_oauth={
+        "clientId": "dummyClientId", # Not used by password flow, but required by Swagger UI
+        "clientSecret": "dummyClientSecret", # Not used by password flow
+        "appName": settings.PROJECT_NAME,
+        "usePkceWithAuthorizationCodeGrant": False, # Using password flow
+        # "scopes": "openid profile email", # Optional: define scopes if your app uses them
+        "tokenUrl": "/api/auth/login" # Explicitly set the correct token URL
+    }
 )
 
 # --- CORS Middleware --- 
@@ -56,6 +68,7 @@ def on_startup():
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(stories.router, prefix="/api", tags=["Stories & Gameplay"])
 app.include_router(files.router, prefix="/api/files", tags=["File Uploads"])
+app.include_router(game.router, prefix="/api/stories", tags=["Game Progress"]) # Game router for progress
 
 @app.get("/")
 async def read_root():

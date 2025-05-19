@@ -38,17 +38,21 @@ export function AuthProvider({ children }) {
     try {
       setIsLoading(true);
       const data = await authService.login(email, password);
+      console.log('[AuthContext login] Data received:', data);
       if (data.access_token && data.user) {
         localStorage.setItem('authToken', data.access_token);
         localStorage.setItem('authUser', JSON.stringify(data.user));
         setToken(data.access_token);
         setUser(data.user);
+        console.log('[AuthContext login] Token and user set. isAuthenticated should become true.');
       } else {
+        console.error("[AuthContext login] Invalid data from login service:", data);
         throw new Error("로그인 서비스에서 유효한 데이터를 반환하지 않았습니다.");
       }
       setIsLoading(false);
       return data.user;
     } catch (error) {
+      console.error('[AuthContext login] Error:', error);
       setIsLoading(false);
       throw error;
     }

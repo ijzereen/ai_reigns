@@ -42,8 +42,7 @@ class StoryBase(BaseModel):
     description: Optional[str] = None
 
 class StoryCreate(StoryBase):
-    # graph_json will be initialized with a default STORY_START node in the service
-    pass
+    graph_json: Optional[StoryGraph] = None # Added graph_json field
 
 class StoryUpdate(StoryBase):
     title: Optional[str] = None # Allow partial updates

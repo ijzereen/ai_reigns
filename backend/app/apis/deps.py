@@ -12,7 +12,7 @@ from app.schemas import token as token_schema # Renamed for clarity
 from app.crud import crud_user
 
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"  # Adjusted for potential API versioning
+    tokenUrl="/api/auth/login" 
 )
 
 def get_db() -> Generator:

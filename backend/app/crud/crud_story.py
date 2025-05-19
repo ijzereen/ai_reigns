@@ -20,6 +20,15 @@ class CRUDStory(CRUDBase[Story, StoryInDBBase, StoryUpdate]): # Use StoryInDBBas
     def get_story(self, db: Session, story_id: str) -> Optional[Story]:
         return db.query(Story).filter(Story.id == story_id).first()
 
+    def get_story_by_id_and_owner(
+        self, db: Session, *, story_id: str, owner_id: int
+    ) -> Optional[Story]:
+        return (
+            db.query(self.model)
+            .filter(self.model.id == story_id, self.model.user_id == owner_id)
+            .first()
+        )
+
     def get_stories_by_user(self, db: Session, *, user_id: int, skip: int = 0, limit: int = 100) -> List[Story]:
         return (
             db.query(Story)
@@ -37,7 +46,7 @@ class CRUDStory(CRUDBase[Story, StoryInDBBase, StoryUpdate]): # Use StoryInDBBas
         # CRUDBase.update handles partial updates using exclude_unset=True for Pydantic models
         return super().update(db, db_obj=db_obj, obj_in=obj_in)
 
-    def remove_story(self, db: Session, *, story_id: str) -> Story:
+    def remove_story(self, db: Session, *, story_id: str) -> Optional[Story]:
         # CRUDBase.remove expects integer ID by default if model.id is int.
         # Here, Story.id is string, so we fetch then delete.
         obj = db.query(self.model).filter(self.model.id == story_id).first()
