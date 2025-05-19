@@ -1,5 +1,5 @@
 // src/pages/StoryEditorPage.jsx
-import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactFlow, {
   MiniMap,
@@ -16,7 +16,8 @@ import 'reactflow/dist/style.css';
 import { motion } from 'framer-motion';
 import NodeEditSidebar from '../components/story/NodeEditSidebar';
 import CustomNode from '../components/story/CustomNode'; 
-import { storyService } from '../services/storyService'; 
+import { storyService } from '../services/storyService';
+import { useDebouncedCallback } from 'use-debounce';
 
 const NODE_WIDTH = 256; 
 const NODE_SPACING_X = 100;
@@ -90,6 +91,13 @@ const checkCycleWithNewEdge = (sourceId, targetId, currentNodes, currentEdges) =
   return dfs(sourceId);
 };
 
+// Auto-save status type
+const AUTO_SAVE_STATUS = {
+  IDLE: '마지막 저장: কিছুক্ষণ আগে', // Placeholder, will be dynamic
+  SAVING: '저장 중...',
+  SUCCESS: '모든 변경 사항이 저장되었습니다.',
+  ERROR: '자동 저장 실패.',
+};
 
 const StoryEditorPage = forwardRef(({ setCurrentStoryTitle }, ref) => {
   const { storyId } = useParams();
@@ -97,117 +105,193 @@ const StoryEditorPage = forwardRef(({ setCurrentStoryTitle }, ref) => {
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
+  const [storyTitle, setStoryTitle] = useState('');
+  const [storyDescription, setStoryDescription] = useState('');
   const [selectedNodeForEdit, setSelectedNodeForEdit] = useState(null);
-  // shakeEditor 상태는 직접 사용되지 않으므로, 단순 트리거용으로 변경하거나 관련 로직 재검토 필요.
-  // 여기서는 우선 setShakeEditor를 직접 호출하는 대신, 다른 방식을 사용하도록 주석 처리.
-  // const [shakeEditor, setShakeEditor] = useState(0); 
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState(AUTO_SAVE_STATUS.IDLE);
+  const [lastSaved, setLastSaved] = useState(new Date());
+  const isInitialLoadDone = useRef(false);
+  const editorRef = useRef(null); // To get editor's height for sidebar calculation
+  const reactFlowWrapper = useRef(null); // Ref for ReactFlow viewport calculations
+  const [reactFlowInstance, setReactFlowInstance] = useState(null); // Store instance
 
   const triggerShakeEffect = useCallback((message = "유효하지 않은 작업입니다!") => {
-    // setShakeEditor(prev => prev + 1); // 이 부분은 shakeEditor 상태를 사용하지 않으므로 주석 처리 또는 다른 방식으로 대체
-    // Framer Motion 등을 사용한 실제 흔들림 효과를 구현하거나, UI 피드백 방식을 통일할 수 있습니다.
-    // 현재는 alert만 사용하므로 shakeEditor 상태가 불필요합니다.
     try { /* ... (알림음 로직) ... */ } catch(e) { console.warn("알림음 재생 실패:", e); }
     alert(`🚫 ${message}`);
-  }, []); // 의존성 배열이 비어있음
+  }, []);
 
-  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [setNodes]);
-  const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [setEdges]);
+  const onNodesChange = useCallback((changes) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
+  }, [setNodes]);
 
-  const isValidConnection = useCallback((connection) => {
-    const sourceNode = nodes.find(n => n.id === connection.source);
-    const targetNode = nodes.find(n => n.id === connection.target);
+  const onEdgesChange = useCallback((changes) => {
+    setEdges((eds) => applyEdgeChanges(changes, eds));
+  }, [setEdges]);
+  
+  const onConnect = useCallback(
+    (params) => {
+      if (checkCycleWithNewEdge(params.source, params.target, nodes, edges)) {
+        triggerShakeEffect("순환 구조는 허용되지 않습니다. 다른 노드를 선택해주세요.");
+        return;
+      }
+      const newEdge = { ...params, type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed, color: '#60A5FA' }, animated: false, style: { strokeWidth: 1.5, stroke: '#60A5FA'} };
+      setEdges((eds) => addEdge(newEdge, eds));
+    },
+    [edges, nodes, triggerShakeEffect]
+  );
 
-    if (!sourceNode || !targetNode) return false;
-    if (connection.source === connection.target) {
-      triggerShakeEffect("자기 자신에게 연결할 수 없습니다.");
-      return false;
+  const isValidConnection = useCallback(
+    (connection) => {
+      const sourceNode = nodes.find((node) => node.id === connection.source);
+      const targetNode = nodes.find((node) => node.id === connection.target);
+      if (!sourceNode || !targetNode) return false;
+      if (sourceNode.id === targetNode.id) return false;
+      const sType = sourceNode.data.type;
+      const existingEdgesFromSource = edges.filter(edge => edge.source === sourceNode.id);
+      if (sType === 'STORY' && existingEdgesFromSource.length >= 1) return false;
+      if (sType === 'QUESTION' && existingEdgesFromSource.length >= 2) return false;
+      if (targetNode.data.type === 'STORY_START') return false;
+      return !checkCycleWithNewEdge(connection.source, connection.target, nodes, edges);
+    },
+    [nodes, edges] 
+  );
+  
+  const internalSave = useCallback(async (isAutoSave = false) => {
+    if (!storyId) {
+      console.error("스토리 ID가 없습니다. 저장할 수 없습니다.");
+      if (isAutoSave) setAutoSaveStatus(AUTO_SAVE_STATUS.ERROR);
+      else alert("스토리 ID가 없습니다. 저장할 수 없습니다.");
+      return;
     }
-
-    const outgoingEdgesFromSource = edges.filter(edge => edge.source === connection.source);
-    // 노드 data 객체 내의 type (STORY, QUESTION 등)을 기준으로 검사
-    if (sourceNode.data?.type === 'STORY' && outgoingEdgesFromSource.length >= 1) {
-      triggerShakeEffect("'스토리' 타입 노드는 하나의 다음 선택지만 가질 수 있습니다.");
-      return false;
+    if (!isAutoSave) { // Manual save (not used now) or initial save could still set global saving
+      // setIsSaving(true); 
     }
-    if (sourceNode.data?.type === 'QUESTION' && outgoingEdgesFromSource.length >= 2) {
-      triggerShakeEffect("'질문' 타입 노드는 최대 두 개의 다음 선택지만 가질 수 있습니다.");
-      return false;
-    }
-    // QUESTION_INPUT 타입은 이제 엣지 개수 제한 없음
-    
-    if (checkCycleWithNewEdge(connection.source, connection.target, nodes, edges)) {
-        triggerShakeEffect("이 연결은 이야기 흐름에 사이클을 만듭니다.");
-        return false;
-    }
-    return true;
-  }, [nodes, edges, triggerShakeEffect]);
+    setAutoSaveStatus(AUTO_SAVE_STATUS.SAVING);
 
-  const onConnect = useCallback((connection) => {
-    const sourceNode = nodes.find(n => n.id === connection.source);
-    const currentOutgoingCount = edges.filter(e => e.source === connection.source).length;
-    const newEdge = { 
-      ...connection, 
-      id: `e${connection.source}-${connection.target}-${Date.now()}`,
-      type: 'smoothstep', 
-      markerEnd: { type: MarkerType.ArrowClosed },
-      label: `선택지 ${currentOutgoingCount + 1}`, 
-      data: { stat_effects: null, llm_routing_prompt: "" } 
-    };
-    setEdges((eds) => addEdge(newEdge, eds));
-  }, [nodes, edges, setEdges]);
+    try {
+      await storyService.saveStoryGraph(storyId, storyTitle, storyDescription, nodes, edges);
+      setLastSaved(new Date());
+      setAutoSaveStatus(AUTO_SAVE_STATUS.SUCCESS);
+      if (!isAutoSave) {
+        // alert("스토리가 성공적으로 저장되었습니다."); // No alert for auto-save
+      }
+    } catch (error) {
+      console.error("스토리 저장 중 오류 발생:", error);
+      setAutoSaveStatus(AUTO_SAVE_STATUS.ERROR);
+      if (!isAutoSave) {
+        triggerShakeEffect(`스토리 저장 중 오류가 발생했습니다: ${error.message}`);
+      }
+    } finally {
+      if (!isAutoSave) {
+        // setIsSaving(false);
+      }
+      // For auto-save, status will change, no need to reset to IDLE immediately.
+      // It will go to SUCCESS or ERROR.
+    }
+  }, [storyId, storyTitle, storyDescription, nodes, edges, triggerShakeEffect]);
 
-  const onNodeClick = useCallback((event, node) => setSelectedNodeForEdit(node), []);
-  const onPaneClick = useCallback(() => setSelectedNodeForEdit(null), []);
+  // Debounced save function for auto-save
+  const debouncedAutoSave = useDebouncedCallback(internalSave, 2000); // 2 seconds debounce
 
   useEffect(() => {
     if (storyId) {
       setIsLoading(true);
-      Promise.all([
-        storyService.getStoryDetail(storyId),
-        storyService.getNodes(storyId),
-        storyService.getEdges(storyId)
-      ]).then(([storyDetail, fetchedNodes, fetchedEdges]) => {
-        if (setCurrentStoryTitle && storyDetail) {
-          setCurrentStoryTitle(storyDetail.title || `스토리 "${storyId}" 편집`);
-        }
-        // fetchedNodes와 fetchedEdges는 이미 storyService에서 transform 된 상태
-        setNodes(fetchedNodes || []); 
-        setEdges(fetchedEdges || []);
-      }).catch(error => {
-        console.error("스토리 데이터 로드 실패:", error);
-        triggerShakeEffect("스토리 데이터를 불러오는 데 실패했습니다.");
-        setNodes(initialNodes.map(n => ({...n, type:'custom'}))); // 오류 시 초기 샘플 사용
-        setEdges(initialEdges);
-        if (setCurrentStoryTitle) setCurrentStoryTitle(`스토리 "${storyId}" 편집 (오류)`);
-      }).finally(() => {
-        setIsLoading(false);
-      });
+      isInitialLoadDone.current = false; // Reset before load
+      storyService.getStoryDetail(storyId)
+        .then((storyDetail) => {
+          if (storyDetail) {
+            const title = storyDetail.title || `스토리 "${storyId}" 편집`;
+            const description = storyDetail.description || '';
+            if (setCurrentStoryTitle) setCurrentStoryTitle(title);
+            setStoryTitle(title);
+            setStoryDescription(description);
+            setNodes(storyDetail.nodes || []);
+            setEdges(storyDetail.edges || []);
+            setLastSaved(new Date()); // Set initial "last saved" time
+            setAutoSaveStatus(prev => prev === AUTO_SAVE_STATUS.IDLE || prev === AUTO_SAVE_STATUS.SUCCESS ? `마지막 저장: ${new Date().toLocaleTimeString()}`: prev);
+          } else {
+            // Handle case where storyDetail might be null/undefined if API behaves unexpectedly
+            const defaultTitle = `스토리 "${storyId}" 편집 (로드 실패)`;
+            if (setCurrentStoryTitle) {
+                setCurrentStoryTitle(defaultTitle);
+            }
+            setStoryTitle(defaultTitle);
+            setStoryDescription('스토리 설명을 불러오는 데 실패했습니다.');
+            setNodes(initialNodes.map(n => ({...n, type:'custom'})));
+            setEdges(initialEdges);
+          }
+        })
+        .catch(error => {
+          console.error("스토리 데이터 로드 실패:", error);
+          triggerShakeEffect("스토리 데이터를 불러오는 데 실패했습니다.");
+          const errorTitle = `스토리 "${storyId}" 편집 (오류)`;
+          if (setCurrentStoryTitle) {
+            setCurrentStoryTitle(errorTitle);
+          }
+          setStoryTitle(errorTitle);
+          setStoryDescription('스토리 설명을 불러오는 데 오류가 발생했습니다.');
+          setNodes(initialNodes.map(n => ({...n, type:'custom'}))); // 오류 시 초기 샘플 사용
+          setEdges(initialEdges);
+        })
+        .finally(() => {
+          setIsLoading(false);
+          isInitialLoadDone.current = true; // Mark initial load as done
+          // Trigger an initial save if needed, or rely on first change
+        });
     } else {
       navigate('/');
     }
   }, [storyId, navigate, setCurrentStoryTitle, triggerShakeEffect]);
+  
+  // Effect for auto-saving when relevant data changes
+  useEffect(() => {
+    if (!isInitialLoadDone.current || isLoading) { // Don't auto-save during initial load or if still loading
+      return;
+    }
+    // Trigger auto-save, pass true to indicate it's an auto-save
+    debouncedAutoSave(true); 
+  }, [nodes, edges, storyTitle, storyDescription, debouncedAutoSave, isLoading]);
 
-  const handleNodeDataChange = useCallback((nodeId, newDataFromSidebar, reactFlowNodeType) => {
+  // Update "Last saved" message for IDLE/SUCCESS status
+  useEffect(() => {
+    let intervalId;
+    if (autoSaveStatus === AUTO_SAVE_STATUS.SUCCESS || autoSaveStatus.startsWith("마지막 저장:")) {
+      const updateDisplay = () => {
+        const now = new Date();
+        const diffSeconds = Math.round((now - lastSaved) / 1000);
+        if (diffSeconds < 5) {
+          setAutoSaveStatus("방금 저장됨");
+        } else if (diffSeconds < 60) {
+          setAutoSaveStatus(`마지막 저장: ${diffSeconds}초 전`);
+        } else {
+          setAutoSaveStatus(`마지막 저장: ${lastSaved.toLocaleTimeString()}`);
+        }
+      };
+      updateDisplay(); // Initial update
+      intervalId = setInterval(updateDisplay, 5000); // Update every 5 seconds
+    }
+    return () => clearInterval(intervalId);
+  }, [autoSaveStatus, lastSaved]);
+
+  const handleNodeDataChange = useCallback((nodeId, newData, oldNodeType) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          const updatedNode = { 
-            ...node, 
-            data: { 
-              ...node.data, 
-              ...newDataFromSidebar, // newDataFromSidebar에 게임 로직상 type (STORY, QUESTION 등)이 포함되어 있음
-            },
-            // React Flow의 최상위 type은 변경하지 않음 (항상 'custom')
+          const updatedNode = {
+            ...node,
+            data: { ...node.data, ...newData },
           };
-          
-          const currentLogicType = newDataFromSidebar.type || node.data.type;
-          const outgoing = edges.filter(e => e.source === nodeId);
-          if (currentLogicType === 'STORY' && outgoing.length > 1) {
-            triggerShakeEffect(`'스토리' 타입은 하나의 다음 노드만 가질 수 있습니다. 현재 ${outgoing.length}개의 연결이 있습니다.`);
-          } else if (currentLogicType === 'QUESTION' && outgoing.length > 2) {
-            triggerShakeEffect(`'질문' 타입은 최대 두 개의 다음 노드만 가질 수 있습니다. 현재 ${outgoing.length}개의 연결이 있습니다.`);
+          // If node type changed from a type that clears edges to one that doesn't, or vice-versa
+          if (newData.type !== oldNodeType) {
+            // Example: if changing from QUESTION (max 2 edges) to STORY (max 1 edge)
+            // This logic might need to be more sophisticated based on specific rules
+            const outgoing = edges.filter(e => e.source === nodeId);
+            if ((oldNodeType === 'QUESTION' && newData.type === 'STORY' && outgoing.length > 1) || 
+                (oldNodeType === 'STORY' && newData.type === 'QUESTION' && outgoing.length > 2) ){
+                // Potentially clear edges or alert user
+                // For now, just updating node type
+            }
           }
           return updatedNode;
         }
@@ -218,133 +302,34 @@ const StoryEditorPage = forwardRef(({ setCurrentStoryTitle }, ref) => {
         prev && prev.id === nodeId 
         ? {
             ...prev, 
-            data: {...prev.data, ...newDataFromSidebar}, 
+            data: {...prev.data, ...newData}, 
           } 
         : prev
     );
   }, [setNodes, edges, triggerShakeEffect]);
 
-  const handleEdgeChangeFromSidebar = useCallback((edgeId, updatedProperties) => {
+  const outgoingEdges = (nodeId) => edges.filter(edge => edge.source === nodeId);
+
+  const handleEdgeChange = useCallback((edgeId, updatedData) => {
     setEdges((eds) =>
       eds.map((edge) => {
         if (edge.id === edgeId) {
-          const newEdge = { ...edge, ...updatedProperties };
-          if (updatedProperties.data) {
-            newEdge.data = { ...edge.data, ...updatedProperties.data };
-          }
-          if (updatedProperties.target && updatedProperties.target !== edge.target) {
-            if (checkCycleWithNewEdge(newEdge.source, newEdge.target, nodes, eds.filter(e => e.id !== edgeId) )) {
-                triggerShakeEffect("이 변경은 사이클을 생성합니다. 다른 노드를 선택해주세요.");
-                return edge; 
-            }
-          }
-          return newEdge;
+          return { ...edge, ...updatedData, data: { ...edge.data, ...updatedData.data } };
         }
         return edge;
       })
     );
-  }, [setEdges, nodes, triggerShakeEffect]);
+  }, [setEdges]);
 
-  const handleCloseSidebar = useCallback(() => setSelectedNodeForEdit(null), []);
+  const isCycle = useCallback((source, target, currentEdges) => {
+    return checkCycleWithNewEdge(source, target, nodes, currentEdges || edges);
+  }, [nodes, edges]);
 
-  const internalAddNode = useCallback(() => {
-    const newNodeId = `node_${Date.now()}`;
-    let newPosition;
-    let sourceNodeForEdge = null;
-    const currentSelectedNode = selectedNodeForEdit;
-
-    // 자동 배치: 기존 노드들과 겹치지 않게 배치
-    if (nodes.length > 0) {
-      // x축으로 가장 오른쪽 + NODE_WIDTH + NODE_SPACING_X, y축은 아래로 50px씩 이동(순환)
-      const maxX = Math.max(...nodes.map(n => n.position.x));
-      const usedY = nodes.map(n => n.position.y);
-      // y축은 50, 150, 250, 350 등으로 순환 배치
-      const yCandidates = [50, 150, 250, 350, 450];
-      let nextY = yCandidates.find(y => !usedY.includes(y));
-      if (nextY === undefined) nextY = 50 + (nodes.length % yCandidates.length) * 100;
-      newPosition = { x: maxX + NODE_WIDTH + NODE_SPACING_X, y: nextY };
-    } else {
-      newPosition = { x: 50, y: 150 };
-    }
-
-    if (currentSelectedNode) {
-      const sNode = nodes.find(n => n.id === currentSelectedNode.id);
-      if (sNode) {
-        sourceNodeForEdge = sNode;
-        // 선택된 노드 기준 오른쪽에 배치, y축은 자동 배치값 사용
-        newPosition = { x: sNode.position.x + NODE_WIDTH + NODE_SPACING_X, y: newPosition.y };
-      }
-    }
-
-    const newNode = {
-      id: newNodeId, 
-      type: 'custom',
-      data: { 
-        type: 'STORY', 
-        label: `새 노드 ${newNodeId.substring(5,9)}`, 
-        text_content: "", characterName: "", imageUrl: "", imageFile: null 
-      },
-      position: newPosition, sourcePosition: Position.Right, targetPosition: Position.Left,
-    };
-    setNodes((nds) => nds.concat(newNode));
-
-    if (sourceNodeForEdge) {
-      const connection = { source: sourceNodeForEdge.id, target: newNodeId, sourceHandle: null, targetHandle: null };
-      if (isValidConnection(connection)) {
-        const newEdgeId = `e${sourceNodeForEdge.id}-${newNodeId}-${Date.now()}`;
-        const newEdge = {
-          id: newEdgeId, source: sourceNodeForEdge.id, target: newNodeId,
-          type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed },
-          label: `선택지 ${edges.filter(e => e.source === sourceNodeForEdge.id).length + 1}`, 
-          data: { stat_effects: null, llm_routing_prompt: "" }
-        };
-        setEdges((eds) => eds.concat(newEdge));
-      }
-    }
-  }, [nodes, edges, selectedNodeForEdit, setNodes, setEdges, isValidConnection]);
-
-  const internalSave = useCallback(async () => {
-    if (!storyId) return;
-    setIsSaving(true);
-    console.log(`[StoryEditorPage] 스토리 ID ${storyId} 저장 시도...`);
-    
-    const nodesToSave = nodes.map(node => ({
-        id: node.id,
-        type: node.data.type, 
-        data: { 
-            label: node.data.label,
-            text_content: node.data.text_content,
-            characterName: node.data.characterName,
-            imageUrl: node.data.imageUrl, 
-            inputPrompt: node.data.inputPrompt,
-        },
-        position: node.position,
-    }));
-
-    const edgesToSave = edges.map(edge => ({
-        id: edge.id, source: edge.source, target: edge.target, label: edge.label,
-        type: edge.type, data: edge.data, markerEnd: edge.markerEnd
-    }));
-
-    try {
-      await Promise.all([
-        storyService.saveNodes(storyId, nodesToSave),
-        storyService.saveEdges(storyId, edgesToSave)
-      ]);
-      alert(`스토리 ID ${storyId} 저장 완료!`);
-    } catch (error) {
-      console.error("스토리 저장 실패:", error);
-      triggerShakeEffect("스토리 저장 중 오류가 발생했습니다.");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [storyId, nodes, edges]);
-
-  const handleAiGenerate = useCallback(async (aiParams) => {
-    console.log("[StoryEditorPage] AI 생성 요청 받음:", aiParams);
+  const handleAiGenerationForNode = useCallback(async (params) => {
+    console.log("AI Generation for node (StoryEditorPage):", params);
     setIsLoading(true);
     try {
-      const { newNodes: aiGeneratedNodes, newEdges: aiGeneratedEdges } = await storyService.generateAiNodes(storyId, aiParams);
+      const { newNodes: aiGeneratedNodes, newEdges: aiGeneratedEdges } = await storyService.generateAiNodes(storyId, params);
       // AI 생성 결과(노드, 엣지)를 현재 상태에 병합하는 로직 필요
       // ID 충돌 방지, 위치 조정, React Flow 형식으로 변환 등
       // 예시:
@@ -363,56 +348,115 @@ const StoryEditorPage = forwardRef(({ setCurrentStoryTitle }, ref) => {
     }
   }, [storyId /*, nodes, edges, setNodes, setEdges */]);
 
+  const internalAddNode = useCallback(() => {
+    const newNodeId = `node_${Date.now()}`;
+    let position = { x: 100, y: 100 }; // Default position
+
+    if (reactFlowInstance) {
+      // Try to place it in the center of the current viewport
+      const viewport = reactFlowInstance.getViewport();
+      position = reactFlowInstance.project({
+        x: viewport.x + (reactFlowWrapper.current.clientWidth / 2) - (NODE_WIDTH / 2), // NODE_WIDTH is an assumed constant for node width
+        y: viewport.y + (reactFlowWrapper.current.clientHeight / 2) - 50, // Assuming default node height around 100
+      });
+    } else if (nodes.length > 0) {
+      // Fallback: place it to the right of the rightmost node
+      const rightmostNode = nodes.reduce((prev, current) => (prev.position.x > current.position.x) ? prev : current);
+      position = {
+        x: rightmostNode.position.x + NODE_WIDTH + NODE_SPACING_X, // NODE_SPACING_X is an assumed constant
+        y: rightmostNode.position.y,
+      };
+    }
+
+    const newNode = {
+      id: newNodeId,
+      type: 'custom', // Your custom node type
+      data: {
+        type: 'STORY', // Default game logic type
+        label: `새 노드 ${newNodeId.substring(5, 9)}`,
+        text_content: "새로운 이야기 조각입니다.",
+        characterName: "",
+        imageUrl: "",
+        imageFile: null,
+      },
+      position,
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    };
+
+    setNodes((nds) => nds.concat(newNode));
+    // Optionally select the new node for editing:
+    // setTimeout(() => setSelectedNodeForEdit(newNode), 0); // Delay to ensure node is rendered
+  }, [nodes, reactFlowInstance, setNodes]);
 
   useImperativeHandle(ref, () => ({
-    triggerAddNode: internalAddNode,
-    triggerSave: internalSave,
+    triggerAddNode: internalAddNode, // Changed from handleAiGenerationForNode
+    triggerSave: () => internalSave(false),
     getSelectedNodeId: () => selectedNodeForEdit?.id,
-  }));
+  }), [internalSave, selectedNodeForEdit, internalAddNode]);
 
   if (isLoading && nodes.length === 0) {
     return <div className="w-full h-full flex items-center justify-center text-gray-500 text-xl">스토리 에디터 로딩 중...</div>;
   }
 
   return (
-    <div className="w-full h-full flex">
-      <motion.div 
-        className="flex-grow bg-white"
-        animate={{ x: selectedNodeForEdit ? [0, -3, 3, -3, 3, -2, 2, 0] : 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <ReactFlow
-          nodes={nodes} edges={edges}
-          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-          onConnect={onConnect} isValidConnection={isValidConnection}
-          onNodeClick={onNodeClick} onPaneClick={onPaneClick}
-          nodeTypes={nodeTypes}
-          fitView className="story-editor-flow"
-          proOptions={{ hideAttribution: true }}
-          deleteKeyCode={['Backspace', 'Delete']}
-        >
-          <MiniMap nodeStrokeWidth={3} zoomable pannable />
-          <Controls />
-          <Background color="#f0f0f0" gap={24} size={1.5} />
-        </ReactFlow>
-      </motion.div>
-      {selectedNodeForEdit && (
-        <NodeEditSidebar
-          key={selectedNodeForEdit.id}
-          selectedNode={selectedNodeForEdit}
-          allNodes={nodes} allEdges={edges}
-          onNodeDataChange={handleNodeDataChange}
-          onEdgeChange={handleEdgeChangeFromSidebar}
-          onClose={handleCloseSidebar}
-          isCycleCallback={(sourceId, targetId, currentEdgesForCheck) => checkCycleWithNewEdge(sourceId, targetId, nodes, currentEdgesForCheck || edges)}
-          onAiGenerate={handleAiGenerate}
-        />
-      )}
-      {isSaving && (
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="text-white text-xl p-4 bg-gray-700 rounded-md">저장 중...</div>
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100">
+      {/* Top Bar / Header - Assuming a fixed height, e.g., h-16 */}
+      <header className="h-16 bg-white shadow-md flex items-center justify-between px-6 flex-shrink-0 z-10">
+        <h1 className="text-xl font-semibold text-gray-800 truncate" title={storyTitle}>{storyTitle || '스토리 편집기'}</h1>
+        <div className="flex items-center space-x-3">
+          <span className="text-sm text-gray-500 whitespace-nowrap">{autoSaveStatus}</span>
+          <button onClick={() => navigate('/')} className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300">나가기</button>
         </div>
-      )}
+      </header>
+
+      {/* Main Content Area (ReactFlow + Sidebar) */}
+      <div ref={editorRef} className="flex flex-1 overflow-hidden"> {/* Added ref here */}
+        {/* ReactFlow Canvas Area */}
+        <div ref={reactFlowWrapper} className="flex-grow h-full relative bg-white"> {/* Added reactFlowWrapper ref */}
+          <ReactFlowProvider>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={nodeTypes}
+              isValidConnection={isValidConnection}
+              fitView
+              onInit={setReactFlowInstance} // Store reactflow instance
+              className="bg-gradient-to-br from-gray-50 to-gray-200" // Added a subtle gradient
+              deleteKeyCode={['Backspace', 'Delete']}
+              onNodeClick={(_, node) => setSelectedNodeForEdit(node)}
+              onPaneClick={() => setSelectedNodeForEdit(null)}
+            >
+              <MiniMap nodeStrokeWidth={3} zoomable pannable />
+              <Controls />
+              <Background color="#ccc" variant="dots" gap={16} size={1} />
+            </ReactFlow>
+          </ReactFlowProvider>
+        </div>
+
+        {/* NodeEditSidebar - This will take remaining height from parent */}
+        {selectedNodeForEdit && (
+          // The parent div of NodeEditSidebar now has flex-1 and overflow-hidden,
+          // NodeEditSidebar itself has h-full, so it should take the full height of this flex container part.
+          <div className="w-80 h-full flex-shrink-0 border-l border-gray-300 bg-gray-50">
+             {/* NodeEditSidebar's internal h-full and overflow-hidden should now work correctly */}
+            <NodeEditSidebar
+              key={selectedNodeForEdit.id} 
+              selectedNode={selectedNodeForEdit}
+              allNodes={nodes}
+              allEdges={edges}
+              onNodeDataChange={handleNodeDataChange}
+              onEdgeChange={handleEdgeChange}
+              onClose={() => setSelectedNodeForEdit(null)}
+              isCycleCallback={isCycle} 
+              onAiGenerate={handleAiGenerationForNode} 
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 });

@@ -9,18 +9,27 @@ const getAuthToken = () => {
 };
 
 // 프론트엔드 React Flow 형식으로 변환하는 함수들 (이전과 동일하게 유지 또는 필요시 수정)
-const transformNodeForFrontend = (backendNode) => ({
-  id: backendNode.id.toString(), // Ensure ID is string for React Flow
-  type: 'custom', // 프론트엔드 전용 타입
-  position: backendNode.position,
-  data: { // 백엔드 data 필드를 그대로 사용하거나, 프론트엔드 필요에 맞게 매핑
-    ...backendNode.data,
-    // label: backendNode.data.label, // 이미 포함되어 있을 것
-    // text_content: backendNode.data.text_content, // 이미 포함
-  },
-  sourcePosition: 'right', // 프론트엔드 React Flow 표시용
-  targetPosition: 'left',  // 프론트엔드 React Flow 표시용
-});
+export const transformNodeForFrontend = (backendNode) => {
+  if (!backendNode || typeof backendNode.id === 'undefined') {
+    // Handle cases where backendNode is null, undefined, or doesn't have an id.
+    // This might happen if the backend response for next_node_data is not as expected.
+    console.error("transformNodeForFrontend received invalid backendNode:", backendNode);
+    // Return a default/error node structure or null, depending on how GamePlayerPage handles it.
+    // For now, returning null might be caught by GamePlayerPage to show an error.
+    return null; 
+  }
+  return {
+    id: backendNode.id.toString(), // Ensure ID is string for React Flow
+    type: 'custom', // For React Flow to use our CustomNode component
+    position: backendNode.position,
+    data: { 
+      ...backendNode.data, // Spread existing data from backendNode.data (like label, text_content)
+      type: backendNode.type, // IMPORTANT: Add the game logic type from backendNode.type
+    },
+    sourcePosition: 'right', // 프론트엔드 React Flow 표시용
+    targetPosition: 'left',  // 프론트엔드 React Flow 표시용
+  };
+};
 
 const transformEdgeForFrontend = (backendEdge) => ({
   id: backendEdge.id.toString(),
@@ -34,23 +43,67 @@ const transformEdgeForFrontend = (backendEdge) => ({
 
 // 백엔드로 보낼 때 React Flow 관련 속성 제거 (필요한 경우)
 const transformNodeForBackend = (frontendNode) => {
-  const { sourcePosition, targetPosition, ...restOfNode } = frontendNode;
-  // type: 'custom'도 백엔드에서는 실제 노드 타입 (STORY, QUESTION 등)으로 변환 필요
-  // 현재는 백엔드 graph_json이 프론트와 거의 동일한 구조를 기대하므로, data.type을 사용.
+  // frontendNode is a React Flow node object
+  const {
+    // Fields to exclude from the top-level of the backend node object
+    sourcePosition, 
+    targetPosition, 
+    selected, 
+    dragging, 
+    width, 
+    height,
+    type: reactFlowNodeType // rename reactflow's 'type' (e.g., 'custom') to avoid clash
+  } = frontendNode;
+
+  const nodeDataPayload = frontendNode.data || {};
+
   return {
-      ...restOfNode,
-      data: frontendNode.data // data 필드는 그대로 전달 (내부에 type: STORY 등 포함)
+    id: frontendNode.id.toString(),
+    type: nodeDataPayload.type || 'STORY', // Ensure type always has a value, default to STORY if undefined
+    position: frontendNode.position,
+    data: { // Construct the data payload for the backend
+      label: nodeDataPayload.label || (nodeDataPayload.type === 'STORY_START' ? '시작' : '새 노드'), // Ensure label is not empty; provide a default
+      // Backend expects string, even if empty, for these fields based on the 422 error for text_content.
+      text_content: nodeDataPayload.text_content || "", 
+      characterName: nodeDataPayload.characterName || "", 
+      inputPrompt: nodeDataPayload.inputPrompt || "",
+      // imageUrl can likely be null if not provided.
+      imageUrl: nodeDataPayload.imageUrl || null,
+    },
   };
 };
 
 const transformEdgeForBackend = (frontendEdge) => {
-    // markerEnd.type을 소문자로 변경해야 할 수도 있음 (백엔드 스키마 확인 필요)
-    // 현재 백엔드는 대문자 ArrowClosed를 기대하지 않음 (API Spec v0.4 edge 참조)
-    // const markerEnd = frontendEdge.markerEnd ? 
-    //     { ...frontendEdge.markerEnd, type: (frontendEdge.markerEnd.type || 'arrowclosed').toLowerCase() } : 
-    //     { type: 'arrowclosed' }; 
-    // 백엔드 Edge 스키마는 markerEnd: { "type": "ArrowClosed" }를 따르므로 변환 불필요.
-  return frontendEdge; // 특별한 변환 없이 전달
+  // frontendEdge is a React Flow edge object.
+  // We need to extract only the data relevant for the backend.
+  const backendEdgePayload = {
+    id: frontendEdge.id.toString(),
+    source: frontendEdge.source.toString(),
+    target: frontendEdge.target.toString(),
+    label: frontendEdge.label || '', // Ensure label is a string, even if empty
+    // markerEnd is primarily for React Flow rendering. Omit unless backend explicitly requires and handles it.
+    // markerEnd: frontendEdge.markerEnd, 
+
+    // Only include specific data fields expected by the backend EdgeData schema.
+    data: {
+      // Initialize with defaults or nulls as per backend schema expectations.
+      stat_effects: null,
+      llm_routing_prompt: "", 
+    },
+  };
+
+  // Populate data fields if they exist in frontendEdge.data
+  if (frontendEdge.data) {
+    if (typeof frontendEdge.data.stat_effects !== 'undefined') {
+      backendEdgePayload.data.stat_effects = Array.isArray(frontendEdge.data.stat_effects) ? frontendEdge.data.stat_effects : null;
+    }
+    if (typeof frontendEdge.data.llm_routing_prompt === 'string') {
+      backendEdgePayload.data.llm_routing_prompt = frontendEdge.data.llm_routing_prompt;
+    }
+    // Add any other known/expected fields from frontendEdge.data to backendEdgePayload.data here
+  }
+
+  return backendEdgePayload;
 };
 
 
@@ -106,16 +159,17 @@ export const storyService = {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.detail || '스토리 상세 정보를 불러오는 데 실패했습니다.');
     }
-    const storyDetail = await response.json(); // { id, title, ..., graph_json: { nodes, edges } }
+    const storyDetail = await response.json(); // { id, title, ..., graph_json: { nodes, edges, initial_stats } }
     
-    // 백엔드에서 받은 graph_json의 nodes와 edges를 프론트엔드 React Flow 형식으로 변환
     const transformedNodes = (storyDetail.graph_json?.nodes || []).map(transformNodeForFrontend);
     const transformedEdges = (storyDetail.graph_json?.edges || []).map(transformEdgeForFrontend);
 
     return {
-      ...storyDetail, // title, description 등 포함
+      ...storyDetail, // title, description, etc. are at the top level
+      initial_stats: storyDetail.graph_json?.initial_stats || {},
       nodes: transformedNodes, // React Flow용 노드
       edges: transformedEdges, // React Flow용 엣지
+      // graph_json is still available if needed, but nodes/edges/initial_stats are now top-level for convenience
     };
   },
 
@@ -210,8 +264,15 @@ export const storyService = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || '게임 진행에 실패했습니다.');
+      let errorDetail = '게임 진행에 실패했습니다.';
+      try {
+        const errorData = await response.json();
+        errorDetail = errorData.detail || `Error ${response.status}: ${response.statusText}`; 
+      } catch (e) {
+        // If response is not JSON, use status text or a generic message
+        errorDetail = `Error ${response.status}: ${response.statusText}. Server response was not valid JSON.`;
+      }
+      throw new Error(errorDetail);
     }
     return response.json(); // { next_node_id, next_node_data, updated_stats, is_game_over, final_message }
   },
