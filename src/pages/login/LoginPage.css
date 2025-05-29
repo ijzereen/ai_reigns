@@ -1,0 +1,409 @@
+@import url('https://fonts.googleapis.com/css2?family=Imbue:opsz,wght@10..100,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inknut+Antiqua:wght@300;400;700&display=swap');
+
+.login-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background-color: #DF7676;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.background-rectangle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1280px;
+  height: 832px;
+  background-color: #DF7676;
+  z-index: 0;
+}
+
+.login-title {
+  position: absolute;
+  left: 7%;
+  top: 24%;
+  width: 12%;
+  height: 51%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-title h1 {
+  font-family: 'Imbue', serif;
+  font-weight: 400;
+  font-size: clamp(60px, 10vw, 130px);
+  line-height: 1.2em;
+  text-align: center;
+  color: #070504;
+  margin: 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.login-container {
+  position: relative;
+  width: 52%;
+  max-width: 663px;
+  height: 84%;
+  max-height: 700px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: clamp(20px, 3vw, 30px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2% 4%;
+  box-sizing: border-box;
+}
+
+.name-section {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 5%;
+  margin-top: 0.5%;
+}
+
+.name-section h2 {
+  font-family: 'Imbue', serif;
+  font-weight: 400;
+  font-size: clamp(80px, 12vw, 150px);
+  line-height: 1.2em;
+  color: #CB2626;
+  margin: 0;
+}
+
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(20px, 3vh, 40px);
+}
+
+.input-group {
+  position: relative;
+  width: 84%;
+  max-width: 556px;
+}
+
+.input-group label {
+  display: block;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.6vw, 20px);
+  color: #FFFFFF;
+  margin-bottom: clamp(5px, 1vh, 10px);
+  text-align: left;
+  transition: font-size 0.3s ease;
+}
+
+.input-group input {
+  width: 100%;
+  height: clamp(60px, 6vh, 75px);
+  background-color: #33313B;
+  border: none;
+  border-radius: 5px;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.6vw, 20px);
+  color: #FFFFFF;
+  padding: 0 clamp(15px, 2vw, 20px);
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.input-group input::placeholder {
+  color: #8B8A8A;
+}
+
+.input-group input:focus {
+  outline: none;
+  background-color: #3f3d47;
+}
+
+.placeholder-text {
+  position: absolute;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.6vw, 20px);
+  color: #8B8A8A;
+  pointer-events: none;
+  left: clamp(15px, 2vw, 20px);
+  top: 70%;
+  transform: translateY(-50%);
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - clamp(30px, 4vw, 40px));
+}
+
+.login-button {
+  width: 84%;
+  max-width: 556px;
+  height: clamp(55px, 5.5vh, 71px);
+  background-color: #E72222;
+  border: none;
+  border-radius: clamp(15px, 2vw, 20px);
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 700;
+  font-size: clamp(16px, 2vw, 25px);
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: clamp(20px, 3vh, 40px);
+}
+
+.login-button:hover {
+  background-color: #d41e1e;
+  transform: translateY(-1px);
+}
+
+.login-button:active {
+  background-color: #c11a1a;
+  transform: translateY(0);
+}
+
+.forgot-password {
+  text-align: center;
+  margin-top: clamp(15px, 2vh, 25px);
+  width: 100%;
+  padding: 0 clamp(10px, 2vw, 20px);
+}
+
+.forgot-password a {
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 300;
+  font-size: clamp(12px, 1.4vw, 18px);
+  color: #CB2626;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: inline-block;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.forgot-password a:hover {
+  text-decoration: underline;
+  color: #E72222;
+  transform: scale(1.02);
+}
+
+.signup-link {
+  text-align: center;
+  margin-top: clamp(15px, 2.5vh, 30px);
+  width: 100%;
+  padding: 0 clamp(10px, 2vw, 20px);
+}
+
+.signup-link a {
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 300;
+  font-size: clamp(12px, 1.4vw, 18px);
+  color: #D50505;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: inline-block;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.signup-link a:hover {
+  text-decoration: underline;
+  color: #E72222;
+  transform: scale(1.02);
+}
+
+.footer {
+  position: absolute;
+  bottom: clamp(15px, 3vh, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  text-align: center;
+  width: 90%;
+  max-width: 400px;
+}
+
+.footer p {
+  font-family: 'Imbue', serif;
+  font-weight: 400;
+  font-size: clamp(12px, 1.5vw, 20px);
+  color: #000000;
+  margin: 0;
+  white-space: nowrap;
+  transition: font-size 0.3s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 태블릿 세로 */
+@media (max-width: 768px) and (orientation: portrait) {
+  .login-title {
+    left: 5%;
+    top: 10%;
+    width: 90%;
+    height: 15%;
+  }
+  
+  .login-title h1 {
+    writing-mode: horizontal-tb;
+    text-orientation: initial;
+    font-size: clamp(40px, 8vw, 80px);
+  }
+  
+  .login-container {
+    width: 90%;
+    height: 70%;
+    margin-top: 15%;
+  }
+  
+  .name-section {
+    margin-bottom: 6%;
+  }
+  
+  .placeholder-text {
+    font-size: clamp(12px, 3vw, 16px);
+  }
+  
+  .forgot-password a,
+  .signup-link a {
+    font-size: clamp(11px, 2.5vw, 16px);
+    line-height: 1.3;
+  }
+  
+  .footer p {
+    font-size: clamp(10px, 2.5vw, 16px);
+  }
+}
+
+/* 모바일 */
+@media (max-width: 480px) {
+  .login-title {
+    left: 5%;
+    top: 8%;
+    width: 90%;
+    height: 12%;
+  }
+  
+  .login-title h1 {
+    writing-mode: horizontal-tb;
+    text-orientation: initial;
+    font-size: clamp(30px, 7vw, 60px);
+  }
+  
+  .login-container {
+    width: 95%;
+    height: 75%;
+    margin-top: 12%;
+    padding: 5%;
+  }
+  
+  .input-group {
+    width: 100%;
+  }
+  
+  .login-button {
+    width: 100%;
+  }
+  
+  .placeholder-text {
+    font-size: clamp(11px, 3.5vw, 14px);
+    left: clamp(12px, 3vw, 15px);
+  }
+  
+  .forgot-password a,
+  .signup-link a {
+    font-size: clamp(10px, 3vw, 14px);
+    line-height: 1.3;
+  }
+  
+  .footer {
+    bottom: 2vh;
+  }
+  
+  .footer p {
+    font-size: clamp(9px, 3vw, 14px);
+    white-space: normal;
+    line-height: 1.2;
+  }
+}
+
+/* 가로 모드 */
+@media (max-height: 600px) and (orientation: landscape) {
+  .login-page {
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .login-title {
+    left: 5%;
+    top: 20%;
+    width: 25%;
+    height: 60%;
+  }
+  
+  .login-container {
+    width: 60%;
+    height: 90%;
+    margin-left: 5%;
+  }
+  
+  .placeholder-text {
+    font-size: clamp(12px, 2vw, 16px);
+  }
+  
+  .forgot-password a,
+  .signup-link a {
+    font-size: clamp(11px, 1.8vw, 15px);
+  }
+  
+  .footer {
+    bottom: 2vh;
+  }
+  
+  .footer p {
+    font-size: clamp(10px, 2vw, 16px);
+  }
+}
+
+/* 초소형 화면 대응 */
+@media (max-width: 320px) {
+  .placeholder-text {
+    font-size: 10px;
+    left: 12px;
+  }
+  
+  .forgot-password a,
+  .signup-link a {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  
+  .footer p {
+    font-size: 8px;
+    line-height: 1.1;
+  }
+}
+
+/* 대형 화면 최적화 */
+@media (min-width: 1920px) {
+  .placeholder-text {
+    font-size: 22px;
+  }
+  
+  .forgot-password a,
+  .signup-link a {
+    font-size: 20px;
+  }
+  
+  .footer p {
+    font-size: 22px;
+  }
+} 

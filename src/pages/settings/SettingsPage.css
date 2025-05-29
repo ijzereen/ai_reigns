@@ -1,0 +1,386 @@
+@import url('https://fonts.googleapis.com/css2?family=Imbue:opsz,wght@10..100,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inknut+Antiqua:wght@300;400;700&display=swap');
+
+.settings-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background-color: #DF7676;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.background-rectangle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #DF7676;
+  z-index: 0;
+}
+
+.settings-container {
+  position: relative;
+  width: 52%;
+  max-width: 663px;
+  height: 84%;
+  max-height: 700px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: clamp(20px, 3vw, 30px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(40px, 5vh, 60px) clamp(30px, 4vw, 54px);
+  box-sizing: border-box;
+}
+
+.settings-title {
+  font-family: 'Imbue', serif;
+  font-weight: 400;
+  font-size: clamp(45px, 6vw, 75px);
+  line-height: 1.2em;
+  text-align: center;
+  color: #CB2626;
+  margin: 0 0 clamp(30px, 4vh, 50px) 0;
+  width: 100%;
+}
+
+.settings-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(30px, 4vh, 50px);
+}
+
+.story-plot-section {
+  width: 100%;
+}
+
+.story-plot-section label {
+  display: block;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 2.58em;
+  text-align: left;
+  color: #FFFFFF;
+  margin-bottom: clamp(8px, 1vh, 12px);
+}
+
+.story-plot-input {
+  width: 100%;
+  height: clamp(100px, 12vh, 121px);
+  background-color: #33313B;
+  border: none;
+  border-radius: 5px;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.5vw, 18px);
+  color: #FFFFFF;
+  padding: clamp(15px, 2vh, 20px);
+  box-sizing: border-box;
+  resize: none;
+  transition: all 0.3s ease;
+}
+
+.story-plot-input::placeholder {
+  color: #8B8A8A;
+}
+
+.story-plot-input:focus {
+  outline: none;
+  background-color: #3f3d47;
+}
+
+.characters-section {
+  width: 100%;
+}
+
+.characters-title {
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 2.58em;
+  text-align: left;
+  color: #FFFFFF;
+  margin: 0 0 clamp(15px, 2vh, 20px) 0;
+}
+
+.characters-grid {
+  display: grid;
+  grid-template-columns: clamp(80px, 12vw, 92px) 1fr;
+  gap: clamp(15px, 2vw, 20px);
+  width: 100%;
+}
+
+.character-names,
+.character-descriptions {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.5vh, 15px);
+}
+
+.character-name-input,
+.character-desc-input {
+  height: clamp(45px, 5vh, 54px);
+  background-color: #33313B;
+  border: none;
+  border-radius: 5px;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.5vw, 18px);
+  color: #8B8A8A;
+  padding: 0 clamp(12px, 1.5vw, 15px);
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.character-name-input {
+  width: 100%;
+}
+
+.character-desc-input {
+  width: 100%;
+}
+
+.character-name-input::placeholder,
+.character-desc-input::placeholder {
+  color: #8B8A8A;
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 400;
+  font-size: clamp(14px, 1.5vw, 18px);
+  line-height: 2.58em;
+  text-align: left;
+}
+
+.character-name-input:focus,
+.character-desc-input:focus {
+  outline: none;
+  background-color: #3f3d47;
+  color: #FFFFFF;
+}
+
+.create-story-button {
+  width: 100%;
+  height: clamp(60px, 6vh, 71px);
+  background-color: #E72222;
+  border: none;
+  border-radius: clamp(15px, 2vw, 20px);
+  font-family: 'Inknut Antiqua', serif;
+  font-weight: 700;
+  font-size: clamp(18px, 2vw, 25px);
+  line-height: 2.58em;
+  text-align: center;
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: clamp(20px, 3vh, 30px);
+}
+
+.create-story-button:hover {
+  background-color: #d41e1e;
+  transform: translateY(-2px);
+}
+
+.create-story-button:active {
+  background-color: #c11a1a;
+  transform: translateY(0);
+}
+
+.footer {
+  position: absolute;
+  bottom: clamp(15px, 3vh, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  text-align: center;
+  width: 90%;
+  max-width: 400px;
+}
+
+.footer p {
+  font-family: 'Imbue', serif;
+  font-weight: 400;
+  font-size: clamp(12px, 1.5vw, 20px);
+  color: #000000;
+  margin: 0;
+  white-space: nowrap;
+  transition: font-size 0.3s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 태블릿 세로 */
+@media (max-width: 768px) and (orientation: portrait) {
+  .settings-container {
+    width: 90%;
+    height: 85%;
+    padding: clamp(30px, 4vh, 40px) clamp(20px, 3vw, 30px);
+  }
+  
+  .settings-title {
+    font-size: clamp(35px, 6vw, 55px);
+    margin-bottom: clamp(25px, 3vh, 35px);
+  }
+  
+  .settings-form {
+    gap: clamp(25px, 3vh, 35px);
+  }
+  
+  .characters-grid {
+    grid-template-columns: clamp(70px, 15vw, 85px) 1fr;
+    gap: clamp(12px, 2vw, 15px);
+  }
+  
+  .character-names,
+  .character-descriptions {
+    gap: clamp(8px, 1.2vh, 12px);
+  }
+  
+  .footer p {
+    font-size: clamp(10px, 2.5vw, 16px);
+  }
+}
+
+/* 모바일 */
+@media (max-width: 480px) {
+  .settings-container {
+    width: 95%;
+    height: 90%;
+    padding: clamp(20px, 3vh, 30px) clamp(15px, 3vw, 20px);
+  }
+  
+  .settings-title {
+    font-size: clamp(28px, 6vw, 45px);
+    margin-bottom: clamp(20px, 3vh, 30px);
+  }
+  
+  .settings-form {
+    gap: clamp(20px, 2.5vh, 30px);
+  }
+  
+  .story-plot-input {
+    height: clamp(80px, 10vh, 100px);
+    padding: clamp(12px, 2vh, 15px);
+  }
+  
+  .characters-grid {
+    grid-template-columns: 1fr;
+    gap: clamp(15px, 2vh, 20px);
+  }
+  
+  .character-names {
+    grid-row: 1;
+  }
+  
+  .character-descriptions {
+    grid-row: 2;
+  }
+  
+  .character-name-input,
+  .character-desc-input {
+    height: clamp(40px, 4vh, 48px);
+  }
+  
+  .footer {
+    bottom: 2vh;
+  }
+  
+  .footer p {
+    font-size: clamp(9px, 3vw, 14px);
+    white-space: normal;
+    line-height: 1.2;
+  }
+}
+
+/* 가로 모드 */
+@media (max-height: 600px) and (orientation: landscape) {
+  .settings-container {
+    width: 85%;
+    height: 95%;
+    padding: clamp(15px, 2vh, 25px) clamp(25px, 3vw, 35px);
+  }
+  
+  .settings-title {
+    font-size: clamp(30px, 5vw, 50px);
+    margin-bottom: clamp(15px, 2vh, 25px);
+  }
+  
+  .settings-form {
+    gap: clamp(15px, 2vh, 25px);
+  }
+  
+  .story-plot-input {
+    height: clamp(60px, 8vh, 80px);
+  }
+  
+  .character-name-input,
+  .character-desc-input {
+    height: clamp(35px, 4vh, 45px);
+  }
+  
+  .footer {
+    bottom: 1vh;
+  }
+  
+  .footer p {
+    font-size: clamp(10px, 2vw, 16px);
+  }
+}
+
+/* 초소형 화면 대응 */
+@media (max-width: 320px) {
+  .settings-title {
+    font-size: 24px;
+  }
+  
+  .story-plot-section label,
+  .characters-title {
+    font-size: 14px;
+  }
+  
+  .story-plot-input,
+  .character-name-input,
+  .character-desc-input {
+    font-size: 12px;
+  }
+  
+  .create-story-button {
+    font-size: 16px;
+  }
+  
+  .footer p {
+    font-size: 8px;
+  }
+}
+
+/* 대형 화면 최적화 */
+@media (min-width: 1920px) {
+  .settings-title {
+    font-size: 85px;
+  }
+  
+  .story-plot-section label,
+  .characters-title {
+    font-size: 22px;
+  }
+  
+  .story-plot-input,
+  .character-name-input,
+  .character-desc-input {
+    font-size: 20px;
+  }
+  
+  .create-story-button {
+    font-size: 28px;
+  }
+  
+  .footer p {
+    font-size: 22px;
+  }
+} 
